@@ -25,13 +25,19 @@ import ConvUtil as conv
 import os
 
 def run(target_groups, outgroups, position_conservation, target_species, species_string):
+
 	transcript_list, transcript_to_gene, exon_locations, gene_symbols = conv.load_RefGenes()
-	convergentFileOutput = "{0}/convergentMutations_{1}_{2}.txt".format(os.getcwd() + "/ConvDiv_sites", species_string, position_conservation)
-	backgroundFileOutput = "{0}/background_{1}_{2}.txt".format(os.getcwd() + "/ConvDiv_sites/Background", species_string, position_conservation)
-	divergentFileOutput = "{0}/divergentMutations_{1}_{2}.txt".format(os.getcwd() + "/ConvDiv_sites", species_string, position_conservation)
-	print convergentFileOutput
-	print backgroundFileOutput
-	print divergentFileOutput
+	convergentFileOutput, backgroundFileOutput, divergentFileOutput = conv.init_outputs(species_string, position_conservation)
+
+	# Main loop
+	iter = -1
+	with open(convergentFileOutput, "w") as w:
+		with open(backgroundFileOutput, "w") as wTestCounts:
+			wd = open(divergentFileOutput, "w")
+			for transcript in transcript_list:
+				iter += 1
+				bin = int(transcript[-2:])
+				
 	
 
 if __name__ == "__main__":

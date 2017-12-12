@@ -7,6 +7,7 @@
 import sys
 import optparse
 import gzip
+import os
 
 species_list = sorted(["hg38","ailMel1","bosTau8","calJac3","camFer1","canFam3","capHir1","cavPor3","cerSim1",
 		"chiLan1","chlSab2","chrAsi1","conCri1","criGri1","dasNov3","echTel2","eleEdw1","eptFus1","equCab2",
@@ -146,6 +147,21 @@ def load_RefGenes():
 			data = line.strip().split()
 			gene_symbols[data[1]] = data[0]
 	return transcript_list, transcript_to_gene, exon_locations, gene_symbols
+
+
+def init_outputs(species_string, position_conservation):
+	if not os.path.isdir(os.getcwd() + "/ConvDiv_sites"):
+		os.mkdir(os.getcwd() + "/ConvDiv_sites")
+	if not os.path.isdir(os.getcwd() + "/ConvDiv_sites/Background"):
+		os.mkdir(os.getcwd() + "/ConvDiv_sites/Background")
+	convergentFileOutput = "{0}/convergentMutations_{1}_{2}.txt".format(os.getcwd() + "/ConvDiv_sites", 
+		species_string, position_conservation)
+	backgroundFileOutput = "{0}/background_{1}_{2}.txt".format(os.getcwd() + "/ConvDiv_sites/Background", 
+		species_string, position_conservation)
+	divergentFileOutput = "{0}/divergentMutations_{1}_{2}.txt".format(os.getcwd() + "/ConvDiv_sites", 
+		species_string, position_conservation)
+	return convergentFileOutput, backgroundFileOutput, divergentFileOutput
+	
 	
 
 
