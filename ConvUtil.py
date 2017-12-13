@@ -161,6 +161,18 @@ def init_outputs(species_string, position_conservation):
 	divergentFileOutput = "{0}/divergentMutations_{1}_{2}.txt".format(os.getcwd() + "/ConvDiv_sites", 
 		species_string, position_conservation)
 	return convergentFileOutput, backgroundFileOutput, divergentFileOutput
+
+
+def species_in_species_list(species):
+	return species in species_list
+
+
+def convert_alignment_to_sequence(alignment):
+	sequence = ""
+	for l in alignment:
+		if l not in "0123":
+			sequence += l
+	return sequence.upper()
 	
 	
 

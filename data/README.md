@@ -14,3 +14,7 @@
 
 #### humanGeneSymbol.humanEnsembl.biomart86.NoSyn.map
    A mapping file between gene names to gene IDs (ENSGid)
+
+#### Directory:	protein_alignments_hg38
+   A directory keeping mammlian sequence alignments of human genes (Ensembl86, GRCh38/hg38 transcript IDs)
+   Subfolders (numbers) indicate the last number of the transcript ID (e.g., ENST00000356109.txt.gz stored in subdirectory 9/)

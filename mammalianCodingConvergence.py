@@ -38,13 +38,35 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 			for transcript in transcript_list:
 				iter += 1
 				bin = int(transcript[-2:])
+				with gzip.open("{0}/{1}/{2}.txt.gz".format(os.getcwd() + "/data/protein_alignments_hg38", bin, transcript)) as alignment_file:
+					sequence_list = {}
+					data = alignment_file.readline().strip().split()
+					assert transcript == data[0]
+					sequence_list["hg38"] = data[1]
+					species_seen = set([])
+					for line in alignment_file:
+						data = line.strip().split()
+						if line[0]=="#":
+							continue
+						assert transcript == data[1]
+						species = data[0]
+						if not conv.species_in_species_list(species):
+							continue
+						# Discard species appearing multiple times
+						if species in species_seen:
+							try:
+								del sequence_list[species]
+							except:
+								pass
+							continue
+						species_seen.add(species)
+						sequence_list[species] = conv.convert_alignment_to_sequence(data[2])
+						assert len(sequence_list[species]) == len(sequence_list["hg38"])
+						
+				
 				
 	
 
 if __name__ == "__main__":
-	if not os.path.isdir(os.getcwd() + "/ConvDiv_sites"):
-		os.mkdir(os.getcwd() + "/ConvDiv_sites")
-	if not os.path.isdir(os.getcwd() + "/ConvDiv_sites/Background"):
-		os.mkdir(os.getcwd() + "/ConvDiv_sites/Background")
 	target_groups, outgroups, position_conservation, target_species, species_string = conv.parse()
 	run(target_groups, outgroups, position_conservation, target_species, species_string)
