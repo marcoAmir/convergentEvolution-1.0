@@ -9,6 +9,8 @@ import optparse
 import gzip
 import os
 
+import BranchLengthScoring as BLS
+
 species_list = sorted(["hg38","ailMel1","bosTau8","calJac3","camFer1","canFam3","capHir1","cavPor3","cerSim1",
 		"chiLan1","chlSab2","chrAsi1","conCri1","criGri1","dasNov3","echTel2","eleEdw1","eptFus1","equCab2",
 		"eriEur2","felCat8","hetGla2","jacJac1","lepWed1","loxAfr3","macFas5","mesAur1","micOch1",
@@ -150,6 +152,9 @@ def load_RefGenes():
 
 
 def init_outputs(species_string, position_conservation):
+	'''
+	  Create output dir (if not exists) and customed output filenames
+	'''
 	if not os.path.isdir(os.getcwd() + "/ConvDiv_sites"):
 		os.mkdir(os.getcwd() + "/ConvDiv_sites")
 	if not os.path.isdir(os.getcwd() + "/ConvDiv_sites/Background"):
@@ -164,17 +169,379 @@ def init_outputs(species_string, position_conservation):
 
 
 def species_in_species_list(species):
+	'''
+	  Making sure the species is in our screen
+	'''
 	return species in species_list
 
 
 def convert_alignment_to_sequence(alignment):
+	'''
+	  Outputs a clean amino-acid sequence
+	'''
 	sequence = ""
 	for l in alignment:
 		if l not in "0123":
 			sequence += l
 	return sequence.upper()
+
+
+def get_codon_locations(exons):
+	'''
+	  Get the exon locations of a transcript (on human genome, GRCh38/hg38)
+	'''
+	codon_locations = []
+	# Each exon tuple contains 7 bases of 5' padding and 6 bases
+	# of 3' padding on the Watson strand, as displayed in the genome browser.
+	if exons[0][3] == "+":
+		# Set current exon and position at beginning of gene
+		done = False
+		current_exon = 0
+		start_pos = exons[current_exon][1] + 7
+		stop_pos = start_pos + 2
+		# Loop through exons, computing codon positions.
+		while True:
+			# If we're off the end of the exon, move to the next one.
+			if start_pos > exons[current_exon][2] - 6:
+				offset = start_pos - (exons[current_exon][2] - 6) - 1
+				while start_pos > (exons[current_exon][2] - 6):
+					current_exon += 1
+					# If there is no next exon, then we're done.
+					# Return the list of codon locations.
+					if current_exon >= len(exons):
+						return codon_locations
+					start_pos = exons[current_exon][1] + 7 + offset
+					stop_pos = start_pos + 2
+			# Add codon position to list
+			codon_locations.append((exons[0][0], start_pos, stop_pos, current_exon+1))
+			# Advance to next codon position
+			start_pos += 3
+			stop_pos += 3
+	else:
+		# Set current exon and position at beginning of gene
+		done = False
+		current_exon = 0
+		stop_pos = exons[current_exon][2] - 6
+		start_pos = stop_pos - 2
+		# Loop through exons, computing codon positions.
+		while True:
+			# If we're off the end of the exon, move to the next one.
+			if stop_pos < exons[current_exon][1] + 7:
+				offset = (exons[current_exon][1] + 7) - stop_pos - 1
+				while stop_pos < exons[current_exon][1] + 7:
+					current_exon += 1
+					# If there is no next exon, then we're done.
+					# Return the list of codon locations.
+					if current_exon >= len(exons):
+						return codon_locations
+					stop_pos = exons[current_exon][2] - 6 - offset
+					start_pos = stop_pos - 2
+			# Add codon position to list
+			codon_locations.append((exons[0][0], start_pos, stop_pos, current_exon+1))
+			# Advance to next codon position
+			start_pos -= 3
+			stop_pos -= 3
 	
 	
+def present_in_sufficient_species(species_amino_acids, target_groups, outgroups, convergentSoft):
+	'''
+	  Make sure at least one member of each target_group is present.
+	'''
+	if convergentSoft:
+		for tg in target_groups:
+			present = False
+			for ts in tg:
+				if ts in species_amino_acids:
+					present = True
+					break
+			if not present:
+				return False
+	else:
+	# Make sure all target species are present.
+		for tg in target_groups:
+			for ts in tg:
+				if ts not in species_amino_acids:
+					return False
+	# Make sure at least one member of each outgroup is present.
+	for og in outgroups:
+		present = False
+		for os in og:
+			if os in species_amino_acids:
+				present = True
+				break
+		if not present:
+			return False
+	return True
+
+
+def count_amino_acids(species_amino_acids):
+	'''
+	  Count how many times each amino acid appears at this position in the sequence.
+	  Returns a dictionary of counts.
+	'''
+	AA_counts = {}
+	for species in species_amino_acids.keys():
+		AA = species_amino_acids[species]
+		if AA not in AA_counts:
+			AA_counts[AA] = 0
+		AA_counts[AA] += 1
+	return AA_counts
+
+
+def get_BBLS_conservation(species_amino_acids, A0, target_groups):
+	'''
+	  This function computes a conservation score based on the Bayesian Branch Length scoring method. 
+	  This method is accounting for bransh lengths between species and is more agnostic to phylogenetic topology.
+	  Output: A score ranging from 0 to 1, showing the level of conservation at an amino-acid position.
+	'''
+	# Remove target species from list so as not to bias results
+	trimmed_AA_index = copy.deepcopy(species_amino_acids)
+	for tg in target_groups:
+		for ts in tg:
+			if ts in trimmed_AA_index:
+				del trimmed_AA_index[ts]
+	species_to_keep = []
+	for species in trimmed_AA_index.keys():
+		species_to_keep.append(species)
+	# Load and prune tree
+	text = os.popen("tree_doctor /data/mammals_hg38.nh -P {0}".format(",".join(species_to_keep))).read()	# Added/edited by Amir
+	tree = BLS.parse_tree(text)
+	'''
+	with open("/cluster/u/amirma/rot/mike/bin/paml4.8/convergence.trees") as f:
+		for i in range(2):
+			f.readline()
+		text = f.read().strip()
+		tree = BLS.parse_tree(text)
+	os.system(mammalian_tree_command)
+	cmd = "tree_doctor pipe.tmp -n -P {0}".format(",".join(species_to_keep))
+	p1 = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+	text = p1.communicate()[0]
+	tree = BLS.parse_tree(text)
+	'''
+	# Construct dictionary showing which species have the
+	# canonical amino acid
+	leaves = {}
+	for key in trimmed_AA_index.keys():
+		if trimmed_AA_index[key] == A0:
+			leaves[key] = 1.0
+		else:
+			leaves[key] = 0.0
+	# Compute BBLS and max possible BBLS
+	bbls = BLS.BBLS(tree, leaves)
+	max_bbls = BLS.getMaxBBLS(tree)
+	return bbls / max_bbls
+
+
+def groups_have_same_amino_acid(target_groups, species_amino_acids, convergentSoft):
+	'''
+	  Input: A list of 2 target groups, each of which is a list of species group of interest.
+
+	  default: convergentSoft=True
+		Can tolerate a missing sequence in some of the target species as long as:
+			1) the 'convergent' amino acid is present at least once in all the targets
+			2) no other amino acids are present in the target species
+
+	  Output: True if above criteria are satisified, otherwise False.
+	'''
+	if convergentSoft:
+		group1_AA=[]
+		group2_AA=[]
+		for species in target_groups[0]:
+			if species in species_amino_acids:
+				group1_AA.append(species_amino_acids[species])
+		for species in target_groups[1]:
+			if species in species_amino_acids:
+				group2_AA.append(species_amino_acids[species])
+		return list(set(group1_AA)), (list(set(group2_AA))==list(set(group1_AA)) and len(list(set(group1_AA)))==1 and len(list(set(group2_AA)))==1)
+	else:
+		for group in target_groups:
+			for species in group:
+				if species not in species_amino_acids or \
+					species_amino_acids[species] != species_amino_acids[target_groups[0][0]]:
+					return [''], False
+		return species_amino_acids[target_groups[0][0]], True
+
+
+def checkDivergent(target_groups, outgroups, species_amino_acids, A0, convergentSoft):
+	'''
+	  Check if a tested position is likely a divergent mutation site (different amino acids in the targets)
+	  This subroutine makes sure that amino acids are different between the two target groups
+	   and that the amino acid of each target is different than its outgroup
+	'''
+	aAcids1 = [];	aAcids2 = [];	aAcids1_og = [];	aAcids2_og = [];
+	missingTargetAlignments = False	
+	for s in target_groups[0]:
+		if s in species_amino_acids:
+			aAcids1.append(species_amino_acids[s])
+		else:
+			missingTargetAlignments = True
+	for s in target_groups[1]:
+		if s in species_amino_acids:
+			aAcids2.append(species_amino_acids[s])
+		else:
+			missingTargetAlignments = True
+	for s in outgroups[0]:
+		if (s in species_amino_acids.keys()):
+			aAcids1_og.append(species_amino_acids[s])
+	for s in outgroups[1]:
+		if (s in species_amino_acids.keys()):
+			aAcids2_og.append(species_amino_acids[s])
+	# Now, check that each outgroup is different than its target
+	success_1 = (len(list(set(aAcids1) & set(aAcids1_og)))==0)
+	success_2 = (len(list(set(aAcids2) & set(aAcids2_og)))==0)
+	#if (success_1 and success_2 and len(list(set(aAcids1) & set(aAcids2)))==0):
+	if convergentSoft:
+		if (len(list(set(aAcids1) & set(aAcids2)))==0 and len(list(set(aAcids1) & set(A0)))==0 and len(list(set(aAcids2) & set(A0)))==0 and success_1 and success_2 and len(aAcids1)>0 and len(aAcids2)>0):
+			return 1, '|'.join(aAcids1 + aAcids2)
+		else:
+			return 0, 'X'
+	else:
+		if (len(list(set(aAcids1) & set(aAcids2)))==0 and len(list(set(aAcids1) & set(A0)))==0 and len(list(set(aAcids2) & set(A0)))==0 and success_1 and success_2 and len(aAcids1)>0 and len(aAcids2)>0 and not missingTargetAlignments):
+			return 1, '|'.join(aAcids1 + aAcids2)
+		else:
+			return 0, 'X'
+
+
+def outgroups_have_different_amino_acids(target_amino_acid, outgroups, species_amino_acids):
+	'''
+	  Input: amino acid found in target species, list of outgroups,
+	         dict of amino acids at this position in each species.
+	  Output: True if for every outgroup, there exists a species
+		 that does not have the target amino acid. False otherwise.
+	'''
+	for og in outgroups:
+		success = False
+		for species in og:
+			if species in species_amino_acids and species_amino_acids[species] != target_amino_acid:
+				success = True
+				break
+		if not success:
+			return False
+	return True
+
+
+def trim_newick_tree(species_to_keep, species_string, position_conservation):
+	'''
+	  Call tree doctor and prune the mammalian Newick tree.
+	'''
+	os.system("printf '{0}\\t1\\n\\n' > /cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{1}_{2}.trees".format(len(species_to_keep),species_string, position_conservation))
+	os.system("tree_doctor /data/mammals_hg38.nh -P {0} >> /cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{1}_{2}.trees".format(",".join(species_to_keep), species_string, position_conservation))
+
+
+def run_paml_pamp(species_string, position_conservation):
+	'''
+	  Function: run_PAML_pamp
+	'''
+	with open("/cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{0}_{1}.ctl".format(species_string, position_conservation), "w") as w:
+		w.write(paml_control_template.format(species_string, position_conservation))
+	os.chdir("/cluster/u/amirma/rot/mike/bin/paml4.8")
+	run_command("/cluster/u/amirma/rot/mike/bin/paml4.8/pamp /cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{0}_{1}.ctl".format(species_string, position_conservation))
+	os.chdir("/cluster/u/amirma/rot/mike/scripts/convergence")
+
+
+# Function: parse_pamp_results
+#
+# Read results of a PAML pamp run and extract
+#   critical information.
+#
+# Output: parent = dict representation of phylogenetic
+#   tree. ancestral_seqs = amino acids inferred at each
+#   ancestral node.
+#
+def parse_pamp_results(total_aligned, species_string, position_conservation):
+	'''
+	  Read results of a PAML pamp run and extract the relevant info
+
+	  Output: parent = dict representation of phylogenetic tree.
+		  ancestral_seqs = amino acids inferred at each ancestral node. 
+	'''
+	parent = {}
+	l = 1
+	with open("/cluster/u/amirma/rot/mike/bin/paml4.8/convergence/output/{0}_{1}.mp".format(species_string, position_conservation)) as f:
+		# First figure out tree structure from file
+		line = f.readline()
+		l += 1
+		print l
+		while line != "":
+			if not line.startswith("(1) Branch lengths and substitution pattern"):
+				line = f.readline()
+				continue
+			break
+		tree = f.readline().strip().split()
+		for t in tree:
+			data = [int(d) for d in t.split("..")]
+			parent[data[1]] = data[0]	
+		while line != "":
+			if not line.startswith("(3) Parsimony reconstructions"):
+				line = f.readline()
+				continue
+			break
+		for i in range(4):
+			f.readline()
+		line = f.readline()
+		seqs = line.split("|")[-1].strip()
+		if seqs == "":
+			seqs = line.split("|")[0].split(":")[1].strip()
+		try:
+			confidence = float(seqs.split("(")[1].split(")")[0])
+			print(confidence)
+			seqs = seqs.split("(")[0].strip()
+		except:
+			confidence = 1.0
+		ancestral_seqs = {}
+		issue_detected = False
+		for j in range(len(seqs)):
+			if seqs[j] not in legal_amino_acids:
+				issue_detected = True
+				print(seqs[j])
+				break
+			ancestral_seqs[total_aligned + j + 1] = seqs[j]
+		if issue_detected:
+			# Throw an error if we have an issue; in that case
+			# we'll just move on the next position in sequence.
+			return (None, None, None)
+	return (parent, ancestral_seqs, confidence)
+
+
+# Function: shows_convergence
+#
+# Input: list of indices of key ancestors, list of species groups in which we
+#   are testing for convergence, list of ancestral sequences at internal
+#   tree nodes, list of amino acids at each extant species.
+#
+# Output: True if the target groups have converged,
+#   otherwise False.
+
+def shows_convergence(key_ancestors, target_groups, ancestral_seqs, species_amino_acids, convergentSoft):
+	'''
+	  Input: list of indices of key ancestors, list of species groups in which we
+	         are testing for convergence, list of ancestral sequences at internal
+	         tree nodes, list of amino acids at each extant species.
+
+	  Output: True if the target groups have converged,
+		  otherwise False.
+	'''
+	# We just want to make sure that the ancestral amino acid is not present in any of the target groups, 
+	# but we tolerate missing sequence
+	if convergentSoft:
+		for i in range(len(key_ancestors)):
+			group_AA=[]
+			for species in target_groups[i]:
+				if species in species_amino_acids:
+					group_AA.append(species_amino_acids[species])
+			if ancestral_seqs[key_ancestors[i]] in group_AA:
+				return False
+		return True
+	else:
+		for i in range(len(key_ancestors)):
+			for tg in target_groups[i]:
+				if tg in species_amino_acids:
+					if ancestral_seqs[key_ancestors[i]] == species_amino_acids[target_groups[i][0]]:
+						return False
+				else:
+					return False
+		return True
+
 
 
 
