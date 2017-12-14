@@ -8,6 +8,10 @@ import sys
 import optparse
 import gzip
 import os
+import copy
+import pprint
+import subprocess
+import operator
 
 import BranchLengthScoring as BLS
 
@@ -19,6 +23,18 @@ species_list = sorted(["hg38","ailMel1","bosTau8","calJac3","camFer1","canFam3",
 		"rn6","saiBol1","sorAra2","speTri2","susScr3","triMan1","tupChi1","turTru2","vicPac2"])
 
 legal_amino_acids = "ACDEFGHIKLMNPQRSTVWY"
+
+pp = pprint.PrettyPrinter(indent = 4)
+
+paml_control_template = '''
+    seqfile = ./paml4.8/convergence/control/{0}_{1}.aa * sequence data file name
+    outfile = ./paml4.8/convergence/output/{0}_{1}.mp        * main result file
+   treefile = ./paml4.8/convergence/control/{0}_{1}.trees  * tree structure file name
+
+    seqtype = 2  * 0:nucleotides; 2:amino acids, 3:binary
+      ncatG = 8  * # of categories in the dG model of rates
+      nhomo = 0  * nonhomogeneous in calcualting P for branch
+'''
 
 def parse():
 	'''
@@ -288,7 +304,7 @@ def count_amino_acids(species_amino_acids):
 	return AA_counts
 
 
-def get_BBLS_conservation(species_amino_acids, A0, target_groups):
+def get_BBLS_conservation(species_amino_acids, A0, target_groups, workdir):
 	'''
 	  This function computes a conservation score based on the Bayesian Branch Length scoring method. 
 	  This method is accounting for bransh lengths between species and is more agnostic to phylogenetic topology.
@@ -304,10 +320,10 @@ def get_BBLS_conservation(species_amino_acids, A0, target_groups):
 	for species in trimmed_AA_index.keys():
 		species_to_keep.append(species)
 	# Load and prune tree
-	text = os.popen("tree_doctor /data/mammals_hg38.nh -P {0}".format(",".join(species_to_keep))).read()	# Added/edited by Amir
+	text = os.popen("tree_doctor {0}/data/mammals_hg38.nh -P {1}".format(workdir, ",".join(species_to_keep))).read()
 	tree = BLS.parse_tree(text)
 	'''
-	with open("/cluster/u/amirma/rot/mike/bin/paml4.8/convergence.trees") as f:
+	with open("./paml4.8/convergence.trees") as f:
 		for i in range(2):
 			f.readline()
 		text = f.read().strip()
@@ -420,35 +436,30 @@ def outgroups_have_different_amino_acids(target_amino_acid, outgroups, species_a
 	return True
 
 
-def trim_newick_tree(species_to_keep, species_string, position_conservation):
+def trim_newick_tree(species_to_keep, species_string, position_conservation, workdir):
 	'''
 	  Call tree doctor and prune the mammalian Newick tree.
 	'''
-	os.system("printf '{0}\\t1\\n\\n' > /cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{1}_{2}.trees".format(len(species_to_keep),species_string, position_conservation))
-	os.system("tree_doctor /data/mammals_hg38.nh -P {0} >> /cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{1}_{2}.trees".format(",".join(species_to_keep), species_string, position_conservation))
+	os.system("printf '{0}\\t1\\n\\n' > {1}/paml4.8/convergence/control/{2}_{3}.trees".format(len(species_to_keep), workdir, species_string, position_conservation))
+	os.system("tree_doctor ./data/mammals_hg38.nh -P {0} >> {1}/paml4.8/convergence/control/{2}_{3}.trees".format(",".join(species_to_keep), workdir, species_string, position_conservation))
 
 
-def run_paml_pamp(species_string, position_conservation):
+def run_paml_pamp(species_string, position_conservation, workdir):
 	'''
 	  Function: run_PAML_pamp
 	'''
-	with open("/cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{0}_{1}.ctl".format(species_string, position_conservation), "w") as w:
+	with open("{0}/paml4.8/convergence/control/{1}_{2}.ctl".format(workdir, species_string, position_conservation), "w") as w:
 		w.write(paml_control_template.format(species_string, position_conservation))
-	os.chdir("/cluster/u/amirma/rot/mike/bin/paml4.8")
-	run_command("/cluster/u/amirma/rot/mike/bin/paml4.8/pamp /cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{0}_{1}.ctl".format(species_string, position_conservation))
-	os.chdir("/cluster/u/amirma/rot/mike/scripts/convergence")
+	#os.chdir(workdir + "/paml4.8")
+	run_command("{0}/paml4.8/pamp {0}/paml4.8/convergence/control/{1}_{2}.ctl".format(workdir, species_string, position_conservation))
+	#os.chdir("/cluster/u/amirma/rot/mike/scripts/convergence")
 
 
-# Function: parse_pamp_results
-#
-# Read results of a PAML pamp run and extract
-#   critical information.
-#
-# Output: parent = dict representation of phylogenetic
-#   tree. ancestral_seqs = amino acids inferred at each
-#   ancestral node.
-#
-def parse_pamp_results(total_aligned, species_string, position_conservation):
+def run_command(command):
+	subprocess.check_call(command, shell=True)
+
+
+def parse_pamp_results(total_aligned, species_string, position_conservation, workdir):
 	'''
 	  Read results of a PAML pamp run and extract the relevant info
 
@@ -457,7 +468,7 @@ def parse_pamp_results(total_aligned, species_string, position_conservation):
 	'''
 	parent = {}
 	l = 1
-	with open("/cluster/u/amirma/rot/mike/bin/paml4.8/convergence/output/{0}_{1}.mp".format(species_string, position_conservation)) as f:
+	with open("{0}/paml4.8/convergence/output/{1}_{2}.mp".format(workdir, species_string, position_conservation)) as f:
 		# First figure out tree structure from file
 		line = f.readline()
 		l += 1
@@ -503,15 +514,6 @@ def parse_pamp_results(total_aligned, species_string, position_conservation):
 	return (parent, ancestral_seqs, confidence)
 
 
-# Function: shows_convergence
-#
-# Input: list of indices of key ancestors, list of species groups in which we
-#   are testing for convergence, list of ancestral sequences at internal
-#   tree nodes, list of amino acids at each extant species.
-#
-# Output: True if the target groups have converged,
-#   otherwise False.
-
 def shows_convergence(key_ancestors, target_groups, ancestral_seqs, species_amino_acids, convergentSoft):
 	'''
 	  Input: list of indices of key ancestors, list of species groups in which we
@@ -542,6 +544,50 @@ def shows_convergence(key_ancestors, target_groups, ancestral_seqs, species_amin
 					return False
 		return True
 
+
+def get_conservation_score(sequences, position, padding):
+	# Sanity check
+	for seq in sequences:
+		assert len(seq) == len(sequences[0])
+	
+	# Trim off the parts of the sequences that we actually care about
+	cut_seqs = []
+	for seq in sequences:
+		# The extra math here ensures that we don't go beyond the edges of the sequence.
+		cs = seq[max(0,position-padding):position] + seq[position+1:min(position+padding+1, len(sequences[0]))]
+		cut_seqs.append(cs)
+	consensus = compute_consensus_sequence(cut_seqs)
+	# Compute score
+	score = 0
+	max_score = 0
+	for i in range(len(cut_seqs[0])):
+		for cs in cut_seqs:
+			max_score += 1
+			if cs[i] == consensus[i] and cs[i] not in "?-":
+				score += 1
+	return score*1.0/max_score
+
+
+def compute_consensus_sequence(sequences):
+	'''
+	  Input: a list of sequences of the same length
+	
+	  Output: a single sequence showing the character that appears
+		  most frequently at each position within the input sequences.
+	'''
+	# Sanity check
+	for seq in sequences:
+		assert len(seq) == len(sequences[0])
+	
+	# Build consensus sequence
+	consensus = ""
+	for i in range(len(sequences[0])):
+		dCounts = {}
+		for seq in sequences:
+			dCounts[seq[i]] = dCounts.get(seq[i], 0) + 1
+		consensus += sorted(dCounts.items(), reverse = True, key = operator.itemgetter(1))[0][0]
+
+	return consensus
 
 
 

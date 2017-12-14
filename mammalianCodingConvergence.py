@@ -23,15 +23,24 @@ Example:
 
 import ConvUtil as conv
 import os
+import gzip
+import operator
 
 legal_amino_acids = "ACDEFGHIKLMNPQRSTVWY"	# 20 amino acids
 minimum_species_cutoff = 40			# Amino acid must be present in AT LEAST this many species for us to consider it
+
+species_list = sorted(["hg38","ailMel1","bosTau8","calJac3","camFer1","canFam3","capHir1","cavPor3","cerSim1",
+		"chiLan1","chlSab2","chrAsi1","conCri1","criGri1","dasNov3","echTel2","eleEdw1","eptFus1","equCab2",
+		"eriEur2","felCat8","hetGla2","jacJac1","lepWed1","loxAfr3","macFas5","mesAur1","micOch1",
+		"mm10","musFur1","myoDav1","myoLuc2","nomLeu3","ochPri3","octDeg1","odoRosDiv1","orcOrc1",
+		"oryAfe1","oryCun2","otoGar3","oviAri3","panHod1","panTro5","papAnu2","ponAbe2","pteAle1","pteVam1","rheMac8",
+		"rn6","saiBol1","sorAra2","speTri2","susScr3","triMan1","tupChi1","turTru2","vicPac2"])
 
 def run(target_groups, outgroups, position_conservation, target_species, species_string):
 
 	transcript_list, transcript_to_gene, exon_locations, gene_symbols = conv.load_RefGenes()
 	convergentFileOutput, backgroundFileOutput, divergentFileOutput = conv.init_outputs(species_string, position_conservation)
-
+	
 	# Main loop
 	iter = -1
 	with open(convergentFileOutput, "w") as w:
@@ -41,6 +50,7 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 			total_positions_tested = 0	# Total positions at which we applied convergence/divergence tests.
 			total_converged_positions = 0	# Count of of total convergent positions
 			for transcript in transcript_list:
+				print transcript
 				iter += 1
 				bin = int(transcript[-2:])
 				with gzip.open("{0}/{1}/{2}.txt.gz".format(os.getcwd() + "/data/protein_alignments_hg38", bin, transcript)) as alignment_file:
@@ -53,7 +63,6 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 						data = line.strip().split()
 						if line[0]=="#":
 							continue
-						assert transcript == data[1]
 						species = data[0]
 						if not conv.species_in_species_list(species):
 							continue
@@ -65,7 +74,7 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 								pass
 							continue
 						species_seen.add(species)
-						sequence_list[species] = conv.convert_alignment_to_sequence(data[2])
+						sequence_list[species] = conv.convert_alignment_to_sequence(data[1])
 						assert len(sequence_list[species]) == len(sequence_list["hg38"])
 					codon_locations = conv.get_codon_locations(exon_locations[transcript])
 					# Making sure that the number of codons in list should always be equivalent to number
@@ -75,6 +84,7 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 					number_tested = 0	# A count of how many positions we test in the gene (i.e., in the current transcript)
 					# Now loop through the sequence and analyze one position at a time.
 					for i in range(len(sequence_list["hg38"])):
+						# print str(i) + "\t" + os.getcwd()
 						divergent = 0	# Divergent substitution
 						# skeeeping over stop codons (marked as '*')
 						if sequence_list["hg38"][i] == "*":
@@ -102,7 +112,7 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 						AA_sort = sorted(AA_counts.items(), reverse = True, key = operator.itemgetter(1))
 						A0, nA0 = AA_sort[0][0], AA_sort[0][1]
 						# Compute amino-acid position conservation with BBLS, and make sure it's passing the threshold
-						BBLS_conservation = conv.get_BBLS_conservation(species_amino_acids, A0, target_groups)
+						BBLS_conservation = conv.get_BBLS_conservation(species_amino_acids, A0, target_groups, os.getcwd())
 						if BBLS_conservation < position_conservation:
 							continue						 
 						number_tested += 1
@@ -122,7 +132,7 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 						# Now, infer ancestral sequences and determine whether convergent evolution has occurred.		
 						aligned_species = species_amino_acids.keys()
 						species_indices = {}
-						with open("/cluster/u/amirma/rot/mike/bin/paml4.8/convergence/control/{0}_{1}.aa".format(species_string, position_conservation) ,"w") as wConv:
+						with open("./paml4.8/convergence/control/{0}_{1}.aa".format(species_string, position_conservation) ,"w") as wConv:
 							wConv.write("{0} 1\n\n".format(len(species_amino_acids.keys())))
 							index = 1
 							for species in species_amino_acids.keys():
@@ -130,9 +140,9 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 								species_indices[species] = index
 								index += 1
 						# Use tree_doctor to create the corresponding Newick tree for analysis with PAML pamp
-						conv.trim_newick_tree(species_amino_acids.keys(),species_string, position_conservation)
-						conv.run_paml_pamp(species_string, position_conservation)
-						parent, ancestral_seqs, confidence = conv.parse_pamp_results(total_aligned, species_string, position_conservation)
+						conv.trim_newick_tree(species_amino_acids.keys(),species_string, position_conservation, os.getcwd())
+						conv.run_paml_pamp(species_string, position_conservation, os.getcwd())
+						parent, ancestral_seqs, confidence = conv.parse_pamp_results(total_aligned, species_string, position_conservation, os.getcwd())
 						if parent == None:	
 							number_tested -= 1
 							total_positions_tested -= 1
@@ -203,10 +213,10 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 								  "|".join(conforming_species),
 								  str(nonconforming_count),
 								  str(BBLS_conservation),
-								  str(conservation_window_padding),
-								  str(get_conservation_score(sequence_list.values(), i, 2)),
+								  str(0),
+								  str(conv.get_conservation_score(sequence_list.values(), i, 2)),
 								  "2",
-								  str(get_conservation_score(sequence_list.values(), i, 10)),
+								  str(conv.get_conservation_score(sequence_list.values(), i, 10)),
 								  "10",
 								  str(confidence)
 								  ])
@@ -232,14 +242,20 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 								  "|".join(conforming_species),
 								  str(nonconforming_count),
 								  str(BBLS_conservation),
-								  str(conservation_window_padding),
-								  str(get_conservation_score(sequence_list.values(), i, 2)),
+								  str(0),
+								  str(conv.get_conservation_score(sequence_list.values(), i, 2)),
 								  "2",
-								  str(get_conservation_score(sequence_list.values(), i, 10)),
+								  str(conv.get_conservation_score(sequence_list.values(), i, 10)),
 								  "10",
 								  str(confidence)
 								  ])
 									+ "\n")
+					gene_symbol = gene_symbols[transcript_to_gene[transcript]]
+					wTestCounts.write("\t".join([transcript_to_gene[transcript],
+						  transcript,
+						  gene_symbol,
+						  str(number_tested)]) + "\n")
+	wd.close()
 
 
 if __name__ == "__main__":
