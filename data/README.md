@@ -15,6 +15,9 @@
 #### humanGeneSymbol.humanEnsembl.biomart86.NoSyn.map
 	A mapping file between gene names to gene IDs (ENSGid)
 
+#### GeneSymbolAnnotations.MGI2016.NoSyn.onto
+	A gene-phenotype mapping from MGI ontology (http://www.informatics.jax.org/)
+
 #### Directory:	protein_alignments_hg38
 	A directory keeping mammalian sequence alignments of human genes (Ensembl86, GRCh38/hg38 transcript IDs)
 	Subfolders (numbers) indicate the last number of the transcript ID (e.g., ENST00000356109.txt.gz stored in subdirectory 9/)
