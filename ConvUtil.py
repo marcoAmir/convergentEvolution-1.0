@@ -127,7 +127,8 @@ def load_RefGenes():
 	exon_locations = {}
 	gene_symbols = {}
 	# load list of transcripts to analyze
-	with gzip.open('data/filteredTranscripts.hg38.txt.gz') as f:
+	with gzip.open('data/filteredTranscripts.hg38.trial.txt.gz') as f:
+	#with gzip.open('data/filteredTranscripts.hg38.txt.gz') as f:
 		for line in f:
 			if line[0]=="#":
 				continue

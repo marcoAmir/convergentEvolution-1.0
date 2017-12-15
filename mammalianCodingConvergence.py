@@ -113,6 +113,7 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 						A0, nA0 = AA_sort[0][0], AA_sort[0][1]
 						# Compute amino-acid position conservation with BBLS, and make sure it's passing the threshold
 						BBLS_conservation = conv.get_BBLS_conservation(species_amino_acids, A0, target_groups, os.getcwd())
+						BBLS_conservation = round(BBLS_conservation, 2)
 						if BBLS_conservation < position_conservation:
 							continue						 
 						number_tested += 1
