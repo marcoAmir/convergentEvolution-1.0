@@ -50,8 +50,8 @@ def run(target_groups, outgroups, position_conservation, target_species, species
 			total_positions_tested = 0	# Total positions at which we applied convergence/divergence tests.
 			total_converged_positions = 0	# Count of of total convergent positions
 			for transcript in transcript_list:
-				print transcript
 				iter += 1
+				print str(iter+1) + "\t\t" + transcript
 				bin = int(transcript[-2:])
 				with gzip.open("{0}/{1}/{2}.txt.gz".format(os.getcwd() + "/data/protein_alignments_hg38", bin, transcript)) as alignment_file:
 					sequence_list = {}
