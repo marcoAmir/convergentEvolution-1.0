@@ -7,6 +7,7 @@
 
 ontoFile=${PWD}/data/GeneSymbolAnnotations.MGI2016.NoSyn.onto.gz
 ConvDivDir=${PWD}/ConvDiv_sites
+srcDir=${PWD}/src
 
 if [[ "$#" -ne 3 ]]; then
   echo -e "\nEnrichment analysis of a convergent evolution experiment and its controls\n  Usage:\n  $0 target_group_1 target_group_2 position_conservation\n"
@@ -66,6 +67,14 @@ do
 		>> ${enrich_dir}/ConvDiv_${experiment}.txt
 	rm -rf tmpTerm
 done < ontoTerms
+
+
+sed -e "s/CURR_FILENAME/${enrich_dir}/ConvDiv_${experiment}.txt/g;
+	s/BACKGROUNDFILE/${PWD}/ConvDiv_sites/Background/background_${experiment}.txt.gz/g;
+	s/CONVERGENTFILE/${ConvDivDir}/convergentMutations_${experiment}.txt.gz/g;
+	s/DIVERGENTFILE/${ConvDivDir}/divergentMutations_${experiment}.txt.gz/g" \
+	${srcDir}/ontoTerms_ConvergentDivergentPlots.R > ontoTerms_ConvergentDivergentPlots.R
+
 
 #experimentsFile=$1
 #consThres=$2
