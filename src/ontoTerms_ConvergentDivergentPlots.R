@@ -1,23 +1,20 @@
-require(ggplot2)
+#require(ggplot2)
 
-filename <- CURR_FILENAME
-ConvDiv <- read.table(filename, sep='\t', quote='', header=TRUE)
-backgroundFILE <- BACKGROUNDFILE
-convergentFILE <- CONVERGENTFILE
-divergentFILE <- DIVERGENTFILE
-
-
-applyOntoDagReduce <- TRUE
+#filename <- "CURR_FILENAME"
+#ConvDiv <- read.table(filename, sep='\t', quote='', header=TRUE)
+#backgroundFILE <- "BACKGROUNDFILE"
+#convergentFILE <- "CONVERGENTFILE"
+#divergentFILE <- "DIVERGENTFILE"
 
 # upload the background, convergent and divergent data, and ontology file:
-background <- read.table(backgroundFILE, col.names=c('ensgID','enstID','geneName','nPositions'))
-convergent <- read.table(convergentFILE, col.names=c('ensgID','enstID','geneName','chr','codonStart',
+background <- read.table(gzfile(backgroundFILE), col.names=c('ensgID','enstID','geneName','nPositions'))
+convergent <- read.table(gzfile(convergentFILE), col.names=c('ensgID','enstID','geneName','chr','codonStart',
 							'codonEnd','exon','protPos','protLen','A0','nA0',
 							'speciesAligned','proportionA0','targetSpecies','targetAA',
 							'nonconforming_species','nonconforming_AAs','conforming_species',
 							'nonconforming_count','BBLS_conservation','conservation_window_padding',
 							'conservation_score','X1','X2','X3','confidence)'))
-divergent <- read.table(divergentFILE, col.names=c('ensgID','enstID','geneName','chr','codonStart',
+divergent <- read.table(gzfile(divergentFILE), col.names=c('ensgID','enstID','geneName','chr','codonStart',
 							'codonEnd','exon','protPos','protLen','A0','nA0',
 							'speciesAligned','proportionA0','targetSpecies','targetAA',
 							'nonconforming_species','nonconforming_AAs','conforming_species',
@@ -29,9 +26,8 @@ ontoFile <- read.table('ontoFileTrimmed.txt', sep='\t', quote='', col.names=c('g
 genePerTerm <- data.frame(table(ontoFile$termID))
 colnames(genePerTerm) <- c('termID','nGenes')
 
-funcHighlight <- FUNCHIGHLIGHT
-pheno <- PHENO
-consThres <- CONSERVATIONTHRESHOLD
+# funcHighlight <- FUNCHIGHLIGHT
+# pheno <- PHENO
 
 # Some normalizations (not used in current study or enrichments)
 ### Normalization1 - substituion per length ('length' of onto-term is the total AA length of its genes)
@@ -89,6 +85,6 @@ ConvDivTest$GenesHyperDiv_correctBH <- signif(p.adjust(ConvDivTest$GenesHyperDiv
 ConvDivTest$hyperConv_correctBH <- signif(p.adjust(ConvDivTest$hyperConv, method="BH"),3)
 ConvDivTest$hyperDiv_correctBH <- signif(p.adjust(ConvDivTest$hyperDiv, method="BH"),3)
 ConvDivTest$genePerTermRange <- rep(paste0(minGenesPerTerm,'-',maxGenesPerTerm),nrow(ConvDivTest))
-write.table(ConvDivTest, file=paste0(filename, '.termEnrichments'), col.names = TRUE, row.names = FALSE, quote = FALSE, sep="\t")
+write.table(ConvDivTest, file=paste0(unlist(strsplit(filename, ".txt")), '.termEnrichments'), col.names = TRUE, row.names = FALSE, quote = FALSE, sep="\t")
 
 
