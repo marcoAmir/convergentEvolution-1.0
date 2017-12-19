@@ -41,37 +41,38 @@ echo -e "\n\t...running enrichment analysis for ${bold}${experiment}${normal}"
 join -t$'\t' -1 3 -2 1 -o '1.1 1.2 1.3 1.4 2.1 2.2 2.3 2.4' <(zcat ${PWD}/ConvDiv_sites/Background/background_${experiment}.txt.gz | sort -t$'\t' -k3,3) \
 	<(zcat $ontoFile | sort -u) | awk -F'\t' '{if($4>0) print $5"\t"$6"\t"$7"\t"$8"\t"$4}' | sort -u > ontoFileTrimmed.txt
 cut -f2,3 ontoFileTrimmed.txt | sort -u > ontoTerms
-echo -e "termID\ttermDef\ttotalTermGenes\ttotalTermSizeAA\tnConvGenes\tnConvSites\tnDivGenes\tnDivSites\ttotalMutatedGenes\tfuncClust" \
-	> ${enrich_dir}/ConvDiv_${experiment}.txt
 
 
 ## III - Iterate over all pathways (i.e., MGI-phenotype ontology terms) to collect convergent and divergent events
-echo -e "\n\t...counting convergent and divergent substitutions per pathway"
-while read termDef
-do
-	term=`echo -e $termDef | cut -d" " -f1`
-	termText=`grep $term ontoTerms | cut -f2`
-	grep -w $term ontoFileTrimmed.txt | sort -u > tmpTerm
-	totalTermGenes=`cut -f1 tmpTerm | sort -u | wc -l`
-	totalTermSizeAA=`sort -u tmpTerm | awk -F'\t' '{sum+=$5} END {print sum}'`
-	funcClust=`zcat ${PWD}/data/*.manualFunctionalClustering.gz | grep $term  | cut -f3`
-	nConvSites=`join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
-		<(zcat ${ConvDivDir}/convergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f4-6 | sort -u | wc -l`
-	nConvGenes=`join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
-		<(zcat ${ConvDivDir}/convergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f3 | sort -u | wc -l`
-	nDivSites=`join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
-		<(zcat ${ConvDivDir}/divergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f4-6 | sort -u | wc -l`
-	nDivGenes=`join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
-		<(zcat ${ConvDivDir}/divergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f3 | sort -u | wc -l`
-	totalMutatedGenes=`cat <(join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' \
-		<(cat tmpTerm) <(zcat ${ConvDivDir}/divergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f3) \
-		<(join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
-		<(zcat ${ConvDivDir}/convergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f3) | sort -u | wc -l`
-	echo -e "$term\t$termText\t$totalTermGenes\t$totalTermSizeAA\t$nConvGenes\t$nConvSites\t$nDivGenes\t$nDivSites\t$totalMutatedGenes\t$funcClust" \
-		>> ${enrich_dir}/ConvDiv_${experiment}.txt
-	rm -rf tmpTerm
-done < ontoTerms
-
+if [ ! -f ${enrich_dir}/ConvDiv_${experiment}.txt ]; then
+	echo -e "\n\t...counting convergent and divergent substitutions per pathway"
+	echo -e "termID\ttermDef\ttotalTermGenes\ttotalTermSizeAA\tnConvGenes\tnConvSites\tnDivGenes\tnDivSites\ttotalMutatedGenes\tfuncClust" \
+	> ${enrich_dir}/ConvDiv_${experiment}.txt
+	while read termDef
+	do
+		term=`echo -e $termDef | cut -d" " -f1`
+		termText=`grep $term ontoTerms | cut -f2`
+		grep -w $term ontoFileTrimmed.txt | sort -u > tmpTerm
+		totalTermGenes=`cut -f1 tmpTerm | sort -u | wc -l`
+		totalTermSizeAA=`sort -u tmpTerm | awk -F'\t' '{sum+=$5} END {print sum}'`
+		funcClust=`zcat ${PWD}/data/*.manualFunctionalClustering.gz | grep $term  | cut -f3`
+		nConvSites=`join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
+			<(zcat ${ConvDivDir}/convergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f4-6 | sort -u | wc -l`
+		nConvGenes=`join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
+			<(zcat ${ConvDivDir}/convergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f3 | sort -u | wc -l`
+		nDivSites=`join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
+			<(zcat ${ConvDivDir}/divergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f4-6 | sort -u | wc -l`
+		nDivGenes=`join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
+			<(zcat ${ConvDivDir}/divergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f3 | sort -u | wc -l`
+		totalMutatedGenes=`cat <(join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' \
+			<(cat tmpTerm) <(zcat ${ConvDivDir}/divergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f3) \
+			<(join -t$'\t' -1 1 -2 3 -o '2.1 2.2 2.3 2.4 2.5 2.6 2.10 2.15 1.1 1.4' <(cat tmpTerm) \
+			<(zcat ${ConvDivDir}/convergentMutations_${experiment}.txt.gz | egrep -v "^#" | sort -t$'\t' -k3,3) | cut -f3) | sort -u | wc -l`
+		echo -e "$term\t$termText\t$totalTermGenes\t$totalTermSizeAA\t$nConvGenes\t$nConvSites\t$nDivGenes\t$nDivSites\t$totalMutatedGenes\t$funcClust" \
+			>> ${enrich_dir}/ConvDiv_${experiment}.txt
+		rm -rf tmpTerm
+	done < ontoTerms
+fi
 
 
 ## IV - Compute enrichments (of convergent and divergent mutations) per term (R)
@@ -94,10 +95,10 @@ if [ ${n_conv_enrichments} -ne 0 ]; then
 	n_conv_enrichments=`awk -F'\t' '{if($25<0.05 && $17>2 && $26>0.05 && $18<2) print $0}' ${enrich_dir}/ConvDiv_${experiment}.termEnrichments | wc -l`
 	if [ ${n_conv_enrichments} -ne 0 ]; then
 		echo -e "\n\t${bold}Convergent Pathway Found${normal}\n"
-		paste <(echo -e "${bold}\tontology-term\n\t#Conv. Genes\n\t#Conv. Sites\n\t#Conv. q-value\n\t#Conv. Fold\n\t#Div. Genes\n\t#Div. Sites\n\t#Div. q-value\n\t#Div. Fold${normal}") <(awk -F'\t' '{if($25<0.05 && $17>2 && $26>0.05 && $18<2) print $0}' ${enrich_dir}/ConvDiv_${experiment}.termEnrichments | sort -t$'\t' -k 25n,25 -k17rn,17 | head -1 | awk -F'\t' '{print "\t"$2" ("$1")\n\t"$5"\n\t"$6"\n\t"$25"\n\t"$17"\n\t"$7"\n\t"$8"\n\t"$26"\n\t"$17}') 
+		paste <(echo -e "${bold}\tontology-term\n\t#Conv. Genes\n\t#Conv. Sites\n\t#Conv. q-value\n\t#Conv. Fold\n\t#Div. Genes\n\t#Div. Sites\n\t#Div. q-value\n\t#Div. Fold${normal}") <(awk -F'\t' '{if($25<0.05 && $17>2 && $26>0.05 && $18<2) print $0}' ${enrich_dir}/ConvDiv_${experiment}.termEnrichments | sort -t$'\t' -k 25,25g -k17rn,17 | head -1 | awk -F'\t' '{print "\t"$2" ("$1")\n\t"$5"\n\t"$6"\n\t"$25"\n\t"$17"\n\t"$7"\n\t"$8"\n\t"$26"\n\t"$18}') 
 	else
 		echo -e "\n\t${bold}Relaxation Pathway Found${normal}\n"
-		paste <(echo -e "${bold}\tontology-term\n\t#Conv. Genes\n\t#Conv. Sites\n\t#Conv. q-value\n\t#Conv. Fold\n\t#Div. Genes\n\t#Div. Sites\n\t#Div. q-value\n\t#Div. Fold${normal}") <(awk -F'\t' '{if($25<0.05 && $17>2) print $0}' ${enrich_dir}/ConvDiv_${experiment}.termEnrichments | sort -t$'\t' -k 25n,25 -k17rn,17 | head -1 | awk -F'\t' '{print "\t"$2" ("$1")\n\t"$5"\n\t"$6"\n\t"$25"\n\t"$17"\n\t"$7"\n\t"$8"\n\t"$26"\n\t"$17}') 
+		paste <(echo -e "${bold}\tontology-term\n\t#Conv. Genes\n\t#Conv. Sites\n\t#Conv. q-value\n\t#Conv. Fold\n\t#Div. Genes\n\t#Div. Sites\n\t#Div. q-value\n\t#Div. Fold${normal}") <(awk -F'\t' '{if($25<0.05 && $17>2) print $0}' ${enrich_dir}/ConvDiv_${experiment}.termEnrichments | sort -t$'\t' -k 25,25g -k17rn,17 | head -1 | awk -F'\t' '{print "\t"$2" ("$1")\n\t"$5"\n\t"$6"\n\t"$25"\n\t"$17"\n\t"$7"\n\t"$8"\n\t"$26"\n\t"$18}') 
 	fi
 else
 	echo -e "\n\tNo enrichments were found in ${experiment}\n\n"
